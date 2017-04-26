@@ -1,4 +1,5 @@
 import sqlite3, requests, re, json
+import time
 
 #============================================================
 #操作数据库
@@ -11,7 +12,7 @@ class Sqlite:
                     ip    CHAR(50) NOT NULL,
                     time  TIMESTAMP NOT NULL DEFAULT (datetime('now','localtime'))
                     )''')
-        print("数据库初始化成功！")
+        write_log("数据库连接成功！")
 
     def insert_info(self,data):
         sql = "insert into ip (ip) values ('%s')"%(data)
@@ -19,6 +20,7 @@ class Sqlite:
         cur.execute(sql)
         self.conn.commit()
         cur.close()
+        write_log("%s地址写入成功"%data)
 
     def query_info(self):
         sql = "SELECT * FROM ip WHERE id=(SELECT max(id) FROM ip)"
@@ -33,7 +35,7 @@ class Sqlite:
         return result
 
     def __del__(self):
-        print("数据库关闭")
+        write_log("数据库关闭")
         self.conn.close()
 #============================================================
 #获取当前外网IP地址
@@ -43,10 +45,13 @@ class Getip:
         self.url = "http://1212.ip138.com/ic.asp"
 
     def ip(self):
-        html = requests.get(self.url)
-        html.encoding = "gbk"
-        target_text = re.findall("\[(.*)\]",html.text)
-        return target_text[0]
+        try:
+            html = requests.get(self.url, timeout=5)
+            html.encoding = "gbk"
+            target_text = re.findall("\[(.*)\]",html.text)
+            return target_text[0]
+        except:
+            write_log("Error：获取IP失败！")
 #============================================================
 #修改域名的IP记录地址
 class modify_ip:
@@ -54,8 +59,8 @@ class modify_ip:
     def __init__(self):
         self.getrecordurl = "https://dnsapi.cn/Record.list"
         self.modifyrecordurl = "https://dnsapi.cn/Record.Modify"
-        self.domain_id = "XXXXXXXX"
-        self.login_token = "XXXXXXXXXXX"
+        self.domain_id = "XXXXXXXXXXXX"
+        self.login_token = "XXXXXXXXXXXXXXXXXXXXXXXXXX"
 
     def get_record_id(self):
         poststr = {'login_token':self.login_token,'domain_id':self.domain_id,'format':'json'}
@@ -95,25 +100,30 @@ class modify_ip:
             response = requests.post(self.modifyrecordurl, data=data)
             data = json.loads(response.text)
             if data['status']['code'] == '1':
-                # 判断是否更改IP成功
-                continue
+                write_log("IP更改成功！")
             else:
-                print("IP更改失败！")
+                write_log("Error：IP更改失败！")
 
 
+
+#============================================================
+# 写日志
+def write_log(log):
+    log_time = "[%s]  "%time.strftime('%Y-%m-%d %H:%M:%S')
+    with open('error.log', 'a', encoding='utf8') as data:
+        data.writelines(log_time + log+'\n')
 
 
 #============================================================
 
 # 主程序
 if __name__ == '__main__':
-    print("Hello World")
     IpObject = Getip()
     ip = IpObject.ip()
     del IpObject
     db = Sqlite()
     if ip == db.query_info():
-        print("该IP地址已存在")
+        write_log("IP地址无变化！")
     else:
         db.insert_info(ip)
         modifyip = modify_ip()
@@ -122,5 +132,5 @@ if __name__ == '__main__':
             data_list = modifyip.get_postdata(ip_list, ip)
             modifyip.modify_record_ip(data_list)
         else:
-            print("请查看post data是否正确")
+            write_log("Error：请查看post data是否正确")
     del db
